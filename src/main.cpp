@@ -66,6 +66,13 @@ class $modify(PlayLayer) {
         apply(s_tracker.ended());
         PlayLayer::onQuit();
     }
+
+    // Covers every way out of a level, including Edit in the pause menu, which
+    // skips onQuit.
+    void onExit() {
+        apply(s_tracker.ended());
+        PlayLayer::onExit();
+    }
 };
 
 class $modify(AutoDeafenPauseLayer, PauseLayer) {

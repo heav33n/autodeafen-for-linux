@@ -1,5 +1,6 @@
 #include "auth.hpp"
 #include "discord_link.hpp"
+#include "level_edit.hpp"
 #include "level_config.hpp"
 #include "level_popup.hpp"
 #include "setup_popup.hpp"
@@ -61,7 +62,8 @@ bool LevelPopup::init(std::string levelKey) {
     m_percent = TextInput::create(70.f, "50");
     m_percent->setCommonFilter(CommonFilter::Float);
     m_percent->setMaxCharCount(6);
-    m_percent->setString(numToString(config.percent, 2));
+    m_percentText = numToString(config.percent, 2);
+    m_percent->setString(m_percentText);
     m_mainLayer->addChildAtPosition(m_percent, Anchor::Center, { 60.f, 5.f });
 
     m_status = CCLabelBMFont::create("", "chatFont.fnt");
@@ -83,9 +85,12 @@ void LevelPopup::refreshStatus(float) {
 }
 
 void LevelPopup::save() {
-    auto percent = numFromString<float>(m_percent->getString());
-    auto value = percent ? std::clamp(percent.unwrap(), 0.f, 100.f) : level_config::load(m_key).percent;
-    level_config::save(m_key, m_enabled, value);
+    auto text = m_percent->getString();
+    auto edit = levelEdit(
+        level_config::load(m_key), m_enabled, text != m_percentText, numFromString<float>(text).ok()
+    );
+    if (!edit) return;
+    level_config::save(m_key, edit->enabled, edit->percent);
     current_run::configChanged();
 }
 

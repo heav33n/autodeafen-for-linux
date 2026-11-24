@@ -170,6 +170,7 @@ namespace {
                 "SET_VOICE_SETTINGS", matjson::makeObject({ { "deaf", *send } }), wait, evenIfStopping
             );
             if (reply.ok) m_intent.applied(*send);
+            else if (reply.answered) m_intent.refused();
             return reply.ok;
         }
 

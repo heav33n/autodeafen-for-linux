@@ -1,13 +1,15 @@
 #include "level_config.hpp"
+#include "level_key.hpp"
 
 using namespace geode::prelude;
 
 std::string level_config::keyFor(GJGameLevel* level) {
-    if (level->m_levelType != GJLevelType::Saved) {
-        return fmt::format("level-local-{}", level->m_levelType == GJLevelType::Main ? level->m_levelID.value() : level->m_M_ID);
-    }
-    auto type = level->m_dailyID > 0 ? "daily" : level->m_gauntletLevel ? "gauntlet" : "online";
-    return fmt::format("level-{}-{}", type, level->m_levelID.value());
+    auto kind = LevelKind::Online;
+    if (level->m_levelType == GJLevelType::Main) kind = LevelKind::Main;
+    else if (level->m_levelType == GJLevelType::Editor) kind = LevelKind::Created;
+    else if (level->m_dailyID > 0) kind = LevelKind::Daily;
+    else if (level->m_gauntletLevel) kind = LevelKind::Gauntlet;
+    return levelKey(kind, level->m_levelID.value(), level->m_levelName, level->m_levelRev);
 }
 
 RunConfig level_config::load(std::string const& key) {

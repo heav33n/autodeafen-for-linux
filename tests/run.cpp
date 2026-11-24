@@ -2,6 +2,8 @@
 #include "../src/auth_step.hpp"
 #include "../src/deafen_intent.hpp"
 #include "../src/frame.hpp"
+#include "../src/level_edit.hpp"
+#include "../src/level_key.hpp"
 #include "../src/run_tracker.hpp"
 #include "../src/socket_paths.hpp"
 #include <optional>
@@ -57,6 +59,19 @@ static void deafenIntent() {
       check("player undeafened themself: settled", !i.needsCheck()); }
     { DeafenIntent i; i.want(true); i.next(true);
       check("player deafened before run: not asked again", !i.needsCheck()); }
+    { DeafenIntent i; i.want(true); i.next(false); i.want(false);
+      check("missed reply then death still undeafens", i.needsCheck() && i.next(true) == false); }
+    { DeafenIntent i; i.want(true); i.next(false);
+      check("missed reply is our deafen, not the player's", i.needsCheck() && !i.next(true));
+      check("missed reply settles", !i.needsCheck());
+      i.want(false);
+      check("missed reply undeafens at the end", i.next(true) == false); }
+    { DeafenIntent i; i.want(true); i.next(false);
+      check("lost request is sent again", i.next(false) == true); }
+    { DeafenIntent i; i.want(true); i.next(false); i.refused(); i.want(false);
+      check("refused deafen is not ours", !i.needsCheck()); }
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.want(false); i.next(true); i.refused();
+      check("refused undeafen is tried again", i.needsCheck() && i.next(true) == false); }
     { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.linkLost(); i.want(false);
       check("lost link never undeafens", !i.next(true)); }
 }
@@ -107,7 +122,32 @@ static void authStep() {
     check("nothing saved needs setup", nextAuthStep(false, false, false, false) == NeedSetup);
 }
 
+static void levels() {
+    check("main level key", levelKey(LevelKind::Main, 1, "Stereo", 0) == "level-main-1");
+    check("online level key", levelKey(LevelKind::Online, 42, "x", 0) == "level-online-42");
+    check("daily level key", levelKey(LevelKind::Daily, 42, "x", 0) == "level-daily-42");
+    check("gauntlet level key", levelKey(LevelKind::Gauntlet, 42, "x", 0) == "level-gauntlet-42");
+    check("created level key ignores the id", levelKey(LevelKind::Created, 7, "My Level", 2) == levelKey(LevelKind::Created, 8, "My Level", 2));
+    check("created levels differ by name", levelKey(LevelKind::Created, 0, "a", 0) != levelKey(LevelKind::Created, 0, "b", 0));
+    check("created levels differ by revision", levelKey(LevelKind::Created, 0, "a", 0) != levelKey(LevelKind::Created, 0, "a", 1));
+}
+
+static void levelEdits() {
+    check("untouched popup saves nothing", !levelEdit(ON, true, false, 50.f));
+    auto off = levelEdit(ON, false, false, 50.f);
+    check("toggle is saved", off && !off->enabled && off->percent == 50.f);
+    auto pct = levelEdit(ON, true, true, 75.f);
+    check("percent is saved", pct && pct->enabled && pct->percent == 75.f);
+    auto high = levelEdit(ON, true, true, 250.f);
+    check("percent is clamped", high && high->percent == 100.f);
+    check("unreadable percent saves nothing", !levelEdit(ON, true, true, std::nullopt));
+    auto both = levelEdit(ON, false, true, std::nullopt);
+    check("unreadable percent keeps the old one", both && !both->enabled && both->percent == 50.f);
+}
+
 int main() {
+    levels();
+    levelEdits();
     authStep();
     framing();
     paths();

@@ -6,6 +6,7 @@
 class LevelPopup : public geode::Popup {
     std::string m_key;
     bool m_enabled = false;
+    std::string m_percentText;
     geode::TextInput* m_percent = nullptr;
     cocos2d::CCLabelBMFont* m_status = nullptr;
 
