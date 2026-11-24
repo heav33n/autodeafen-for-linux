@@ -38,7 +38,10 @@ control voice settings for their owner and listed testers.
 ## Privacy
 
 The client secret and login are stored **in plain text** in Geode's save folder
-and sent only to Discord. They are never logged. Do not share that folder.
+and sent only to Discord. This mod never logs them. Do not share that folder.
+
+Other users on your PC cannot open the mod's part of it. Other Geode mods, and
+programs running as you, can read it, as with anything a mod saves.
 
 ## Building
 

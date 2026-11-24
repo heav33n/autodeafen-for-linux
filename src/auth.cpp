@@ -1,5 +1,6 @@
 #include "auth.hpp"
 #include "auth_step.hpp"
+#include "private_folder.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/utils/web.hpp>
 #include <mutex>
@@ -40,6 +41,8 @@ namespace {
         web::WebRequest req;
         req.header("Content-Type", "application/x-www-form-urlencoded");
         req.timeout(asp::Duration::fromSecs(5));
+        // A redirect would send the secret on to wherever it points.
+        req.followRedirects(false);
         req.bodyString(body);
         auto res = req.postSync("https://discord.com/api/oauth2/token");
 
@@ -68,6 +71,7 @@ namespace {
 
 void auth::load() {
     auto mod = Mod::get();
+    if (!makePrivate(mod->getSaveDir().native())) log::warn("Could not make the save folder private");
     std::lock_guard lock(s_mutex);
     s_login = {
         mod->getSavedValue<std::string>("app-id"),

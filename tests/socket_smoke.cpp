@@ -1,5 +1,6 @@
 // Manual check, run under Proton: connects and says hello. Changes nothing.
 #include "../src/discord_socket.hpp"
+#include "../src/private_folder.hpp"
 #include "../src/socket_paths.hpp"
 #include <cstdio>
 #include <cstdlib>
@@ -7,6 +8,7 @@ int main(int argc, char** argv) {
     if (argc < 4) return 2; // client ID, folder with the helper files, folder to install into
     auto dir = runtimeDir(std::getenv("WINE_HOST_XDG_RUNTIME_DIR"), std::getenv("XDG_RUNTIME_DIR"));
     std::printf("runtime dir: %s\n", dir.c_str());
+    std::printf("private folder: %d\n", makePrivate(argv[3]));
     DiscordSocket s;
     auto result = s.connect(dir, {
         [&] { return helper_link::install(argv[2], argv[3]); }, [] { return false; }

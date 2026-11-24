@@ -127,6 +127,7 @@ def refused(name, prepare):
         except TimeoutError:
             opened = False
         check(name + ": never opens Discord", not opened)
+        check(name + ": leaves no proof behind", not os.path.lexists(proof(d)))
 
 refused("no answer from the mod", lambda d, port: None)
 refused("wrong port vouched for", lambda d, port: ok(d).write_text(f"127.0.0.1 {port + 1}\n"))

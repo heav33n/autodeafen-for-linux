@@ -136,8 +136,12 @@ int main(int argc, char** argv) {
     auto proof = proofText(ntohs(own.sin_port));
     auto path = folder + "/autodeafen-" + nonce;
     if (!writeProof(path, proof)) return 4;
-    if (!sendAll(mod, "H", 1)) return 3;
-    if (!waitUntilVouchedFor(path + ".ok", proof)) return 6;
+    // The mod removes the proof, but it may have stopped waiting by now.
+    bool greeted = sendAll(mod, "H", 1);
+    if (!greeted || !waitUntilVouchedFor(path + ".ok", proof)) {
+        unlink(path.c_str());
+        return greeted ? 6 : 3;
+    }
 
     auto dir = runtimeDir(argv[4], std::getenv("XDG_RUNTIME_DIR"));
     if (dir.empty()) dir = "/run/user/" + std::to_string(getuid());

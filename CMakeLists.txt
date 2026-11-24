@@ -14,11 +14,20 @@ add_library(${PROJECT_NAME} SHARED
     src/discord_link.cpp
     src/discord_socket.cpp
     src/helper_link.cpp
+    src/private_folder.cpp
 )
-target_link_libraries(${PROJECT_NAME} ws2_32)
+target_link_libraries(${PROJECT_NAME} ws2_32 advapi32)
 
 if (NOT DEFINED ENV{GEODE_SDK})
     message(FATAL_ERROR "Set GEODE_SDK to a Geode v6.0.0-beta.2 SDK")
 endif()
+
+# Keeps the builder's folder names out of the finished mod.
+add_compile_options(
+    -ffile-prefix-map=${CMAKE_SOURCE_DIR}=.
+    -ffile-prefix-map=${CMAKE_BINARY_DIR}=build
+    -ffile-prefix-map=$ENV{GEODE_SDK}=geode
+)
+target_link_options(${PROJECT_NAME} PRIVATE "LINKER:/PDBALTPATH:%_PDB%")
 add_subdirectory($ENV{GEODE_SDK} ${CMAKE_CURRENT_BINARY_DIR}/geode)
 setup_geode_mod(${PROJECT_NAME})
