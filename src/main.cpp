@@ -21,7 +21,9 @@ namespace {
 
 void current_run::configChanged() {
     s_config = level_config::load(s_levelKey);
-    if (!s_config.enabled) apply(s_tracker.restarted());
+    if (auto layer = PlayLayer::get()) {
+        apply(s_tracker.configChanged(s_config, layer->getCurrentPercent()));
+    }
 }
 
 $on_mod(Loaded) {

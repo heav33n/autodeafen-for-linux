@@ -16,18 +16,22 @@ RunConfig level_config::load(std::string const& key) {
     auto mod = Mod::get();
     RunConfig config {
         .enabled = mod->getSettingValue<bool>("enabled"),
-        .percent = static_cast<float>(mod->getSettingValue<double>("percent")),
+        .start = static_cast<float>(mod->getSettingValue<double>("percent")),
+        .end = static_cast<float>(mod->getSettingValue<double>("end")),
         .practice = mod->getSettingValue<bool>("practice"),
     };
     if (key.empty() || !mod->hasSavedValue(key)) return config;
     auto saved = mod->getSavedValue<matjson::Value>(key);
     config.enabled = saved["enabled"].asBool().unwrapOr(bool(config.enabled));
-    config.percent = static_cast<float>(saved["percent"].asDouble().unwrapOr(double(config.percent)));
+    config.start = static_cast<float>(saved["percent"].asDouble().unwrapOr(double(config.start)));
+    config.end = static_cast<float>(saved["end"].asDouble().unwrapOr(double(config.end)));
     return config;
 }
 
-void level_config::save(std::string const& key, bool enabled, float percent) {
+void level_config::save(std::string const& key, LevelEdit const& edit) {
     Mod::get()->setSavedValue(key, matjson::makeObject({
-        { "enabled", enabled }, { "percent", static_cast<double>(percent) }
+        { "enabled", edit.enabled },
+        { "percent", static_cast<double>(edit.start) },
+        { "end", static_cast<double>(edit.end) },
     }));
 }

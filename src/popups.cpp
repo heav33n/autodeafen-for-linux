@@ -44,38 +44,64 @@ LevelPopup* LevelPopup::create(std::string levelKey) {
 }
 
 bool LevelPopup::init(std::string levelKey) {
-    if (!Popup::init(260.f, 190.f)) return false;
+    if (!Popup::init(280.f, 230.f)) return false;
     this->setID("level-popup"_spr);
     this->setTitle("AutoDeafen");
     m_key = std::move(levelKey);
-    auto config = level_config::load(m_key);
-    m_enabled = config.enabled;
+    m_before = level_config::load(m_key);
+    m_enabled = m_before.enabled;
 
-    addLabel(m_mainLayer, "Enabled", .5f, { -50.f, 40.f });
+    addLabel(m_mainLayer, "Enabled", .5f, { -40.f, 65.f });
     auto toggle = CCMenuItemExt::createTogglerWithStandardSprites(.7f, [this](CCMenuItemToggler* sender) {
         m_enabled = !sender->isToggled();
     });
     toggle->toggle(m_enabled);
-    m_buttonMenu->addChildAtPosition(toggle, Anchor::Center, { 60.f, 40.f });
+    m_buttonMenu->addChildAtPosition(toggle, Anchor::Center, { 50.f, 65.f });
 
-    addLabel(m_mainLayer, "Deafen at %", .5f, { -50.f, 5.f });
-    m_percent = TextInput::create(70.f, "50");
-    m_percent->setCommonFilter(CommonFilter::Float);
-    m_percent->setMaxCharCount(6);
-    m_percentText = numToString(config.percent, 2);
-    m_percent->setString(m_percentText);
-    m_mainLayer->addChildAtPosition(m_percent, Anchor::Center, { 60.f, 5.f });
+    m_startInput = this->addInput("Deafen %", -60.f, m_before.start, m_startEdit);
+    m_endInput = this->addInput("Undeafen %", 60.f, m_before.end, m_endEdit);
+
+    m_slider = RangeSlider::create(200.f, [this](Range range) {
+        if (range.start != m_startEdit.value_or(m_before.start)) {
+            m_startEdit = range.start;
+            m_startInput->setString(numToString(range.start, 2));
+        }
+        if (range.end != m_endEdit.value_or(m_before.end)) {
+            m_endEdit = range.end;
+            m_endInput->setString(numToString(range.end, 2));
+        }
+    });
+    m_slider->setRange({ m_before.start, m_before.end });
+    m_mainLayer->addChildAtPosition(m_slider, Anchor::Center, { 0.f, -30.f });
 
     m_status = CCLabelBMFont::create("", "chatFont.fnt");
     m_status->setScale(.7f);
-    m_mainLayer->addChildAtPosition(m_status, Anchor::Center, { 0.f, -30.f });
+    m_mainLayer->addChildAtPosition(m_status, Anchor::Center, { 0.f, -58.f });
     this->refreshStatus(0.f);
     this->schedule(schedule_selector(LevelPopup::refreshStatus), .5f);
 
     m_buttonMenu->addChildAtPosition(
-        makeButton("Discord Setup", [] { SetupPopup::create()->show(); }), Anchor::Center, { 0.f, -65.f }
+        makeButton("Discord Setup", [] { SetupPopup::create()->show(); }), Anchor::Center, { 0.f, -88.f }
     );
+    handleTouchPriority(this);
     return true;
+}
+
+TextInput* LevelPopup::addInput(char const* label, float x, float value, std::optional<float>& edit) {
+    addLabel(m_mainLayer, label, .4f, { x, 32.f });
+    auto input = TextInput::create(80.f, "0-100");
+    input->setCommonFilter(CommonFilter::Float);
+    input->setMaxCharCount(6);
+    input->setString(numToString(value, 2));
+    input->setCallback([this, &edit](std::string const& text) {
+        auto typed = numFromString<float>(text).ok();
+        if (!typed) return;
+        edit = std::clamp(*typed, 0.f, 100.f);
+        auto start = m_startEdit.value_or(m_before.start), end = m_endEdit.value_or(m_before.end);
+        m_slider->setRange({ std::min(start, end), std::max(start, end) });
+    });
+    m_mainLayer->addChildAtPosition(input, Anchor::Center, { x, 8.f });
+    return input;
 }
 
 void LevelPopup::refreshStatus(float) {
@@ -85,12 +111,9 @@ void LevelPopup::refreshStatus(float) {
 }
 
 void LevelPopup::save() {
-    auto text = m_percent->getString();
-    auto edit = levelEdit(
-        level_config::load(m_key), m_enabled, text != m_percentText, numFromString<float>(text).ok()
-    );
+    auto edit = levelEdit(m_before, m_enabled, m_startEdit, m_endEdit);
     if (!edit) return;
-    level_config::save(m_key, edit->enabled, edit->percent);
+    level_config::save(m_key, *edit);
     current_run::configChanged();
 }
 

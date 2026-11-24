@@ -1,7 +1,7 @@
 # AutoDeafen for Linux
 
-A Geometry Dash mod that deafens you on Discord when a run gets far enough, and
-undeafens you when you die, finish, restart or quit. It talks to Discord
+A Geometry Dash mod that deafens you on Discord for the part of a level you
+choose, and undeafens you after it or when you die, finish, restart or quit. It talks to Discord
 directly, so it works on pure Wayland with **no keybinds and no Discord plugin**.
 
 > **This mod was written by AI (Claude).** It is not on the Geode index and is

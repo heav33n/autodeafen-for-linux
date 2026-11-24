@@ -8,6 +8,7 @@ not need a Discord client plugin.
 
 ## Goals
 - Deafen at the set %; undeafen on death, completion, restart and quit.
+- Optional undeafen %: one slider with a start and an end handle (added 2026-11-24).
 - Per-level % and on/off from a pause menu button; defaults in mod settings.
   Practice mode off by default.
 - If the player was already deafened, leave them deafened at the end.

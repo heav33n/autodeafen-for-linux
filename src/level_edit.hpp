@@ -2,18 +2,25 @@
 #include "run_tracker.hpp"
 #include <algorithm>
 #include <optional>
+#include <utility>
 
 struct LevelEdit {
     bool enabled;
-    float percent;
+    float start, end;
 };
 
 // What closing the popup should save. Nothing if the player changed nothing, so
-// the level keeps following the defaults.
+// the level keeps following the defaults. Untouched or unreadable values are
+// nullopt.
 inline std::optional<LevelEdit> levelEdit(
-    RunConfig before, bool enabled, bool percentTouched, std::optional<float> percent
+    RunConfig before, bool enabled, std::optional<float> start, std::optional<float> end
 ) {
-    bool newPercent = percentTouched && percent.has_value();
-    if (enabled == before.enabled && !newPercent) return {};
-    return LevelEdit { enabled, newPercent ? std::clamp(*percent, 0.f, 100.f) : before.percent };
+    if (enabled == before.enabled && !start && !end) return {};
+    LevelEdit edit {
+        enabled,
+        std::clamp(start.value_or(before.start), 0.f, 100.f),
+        std::clamp(end.value_or(before.end), 0.f, 100.f),
+    };
+    if (edit.start > edit.end) std::swap(edit.start, edit.end);
+    return edit;
 }

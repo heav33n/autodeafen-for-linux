@@ -3,7 +3,9 @@
 
 struct RunConfig {
     bool enabled;
-    float percent;
+    // Deafened from start up to end, in percent. An end of 100 means until the
+    // run is over.
+    float start, end;
     bool practice;
 };
 
@@ -13,11 +15,19 @@ class RunTracker {
     bool m_deafened = false;
     bool m_over = false;
 
+    static bool inRange(RunConfig config, float percent) {
+        return percent >= config.start && percent < config.end;
+    }
+
 public:
     std::optional<bool> frame(RunConfig config, float percent, bool inPractice, bool platformer) {
-        if (m_deafened || m_over || !config.enabled || platformer) return {};
-        if (inPractice && !config.practice) return {};
-        if (percent < config.percent || percent >= 100.f) return {};
+        if (m_over || platformer) return {};
+        if (m_deafened) {
+            if (config.end < 100.f && percent >= config.end) return this->ended();
+            return {};
+        }
+        if (!config.enabled || (inPractice && !config.practice)) return {};
+        if (!inRange(config, percent) || percent >= 100.f) return {};
         m_deafened = true;
         return true;
     }
@@ -35,5 +45,13 @@ public:
         auto result = this->ended();
         m_over = false;
         return result;
+    }
+
+    // The player changed the settings mid-run.
+    std::optional<bool> configChanged(RunConfig config, float percent) {
+        m_over = false;
+        if (!m_deafened || (config.enabled && inRange(config, percent))) return {};
+        m_deafened = false;
+        return false;
     }
 };

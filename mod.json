@@ -13,8 +13,12 @@
 			"description": "Turns AutoDeafen on for levels you have not set up in the pause menu."
 		},
 		"percent": {
-			"type": "float", "name": "Default Percent", "default": 50, "min": 0, "max": 100,
+			"type": "float", "name": "Default Deafen Percent", "default": 50, "min": 0, "max": 100,
 			"description": "Where to deafen in levels you have not set up in the pause menu."
+		},
+		"end": {
+			"type": "float", "name": "Default Undeafen Percent", "default": 100, "min": 0, "max": 100,
+			"description": "Where to undeafen. 100 keeps you deafened until the run is over."
 		},
 		"practice": {
 			"type": "bool", "name": "Practice Mode", "default": false,

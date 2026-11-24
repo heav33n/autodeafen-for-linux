@@ -1,4 +1,6 @@
 #pragma once
+#include "range_slider.hpp"
+#include "run_tracker.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/ui/TextInput.hpp>
 
@@ -6,11 +8,16 @@
 class LevelPopup : public geode::Popup {
     std::string m_key;
     bool m_enabled = false;
-    std::string m_percentText;
-    geode::TextInput* m_percent = nullptr;
+    RunConfig m_before {};
+    // Only the values the player touched.
+    std::optional<float> m_startEdit, m_endEdit;
+    RangeSlider* m_slider = nullptr;
+    geode::TextInput* m_startInput = nullptr;
+    geode::TextInput* m_endInput = nullptr;
     cocos2d::CCLabelBMFont* m_status = nullptr;
 
     bool init(std::string levelKey);
+    geode::TextInput* addInput(char const* label, float x, float value, std::optional<float>& edit);
     void refreshStatus(float);
     void save();
 

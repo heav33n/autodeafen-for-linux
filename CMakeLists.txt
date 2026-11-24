@@ -8,6 +8,7 @@ project(AutoDeafenForLinux VERSION 0.1.0)
 add_library(${PROJECT_NAME} SHARED
     src/main.cpp
     src/popups.cpp
+    src/range_slider.cpp
     src/level_config.cpp
     src/auth.cpp
     src/discord_link.cpp

@@ -4,12 +4,13 @@
 #include "../src/frame.hpp"
 #include "../src/level_edit.hpp"
 #include "../src/level_key.hpp"
+#include "../src/range.hpp"
 #include "../src/run_tracker.hpp"
 #include "../src/socket_paths.hpp"
 #include <optional>
 #include <string>
 
-static constexpr RunConfig ON { .enabled = true, .percent = 50.f, .practice = false };
+static constexpr RunConfig ON { .enabled = true, .start = 50.f, .end = 100.f, .practice = false };
 
 static void runTracker() {
     { RunTracker t;
@@ -33,6 +34,45 @@ static void runTracker() {
     { RunTracker t; check("practice off does nothing", !t.frame(ON, 60.f, true, false)); }
     { RunTracker t; auto c = ON; c.practice = true;
       check("practice on deafens", t.frame(c, 60.f, true, false) == true); }
+}
+
+static constexpr RunConfig TO_80 { .enabled = true, .start = 50.f, .end = 80.f, .practice = false };
+
+static void runRange() {
+    { RunTracker t; t.frame(TO_80, 60.f, false, false);
+      check("before the end stays deafened", !t.frame(TO_80, 79.9f, false, false));
+      check("end undeafens mid-run", t.frame(TO_80, 80.f, false, false) == false);
+      check("after the end stays quiet", !t.frame(TO_80, 81.f, false, false) && !t.ended());
+      t.restarted();
+      check("next attempt deafens after a range end", t.frame(TO_80, 55.f, false, false) == true); }
+    { RunTracker t; check("starting past the end does nothing", !t.frame(TO_80, 85.f, false, false)); }
+    { RunTracker t; t.frame(TO_80, 60.f, false, false);
+      check("change that keeps us in range does nothing", !t.configChanged(ON, 60.f)); }
+    { RunTracker t; t.frame(TO_80, 60.f, false, false); auto c = TO_80; c.start = 70.f;
+      check("raising the start past us undeafens", t.configChanged(c, 60.f) == false);
+      check("and deafens again at the new start", t.frame(c, 70.f, false, false) == true); }
+    { RunTracker t; t.frame(TO_80, 60.f, false, false); auto c = TO_80; c.enabled = false;
+      check("turning it off undeafens", t.configChanged(c, 60.f) == false); }
+    { RunTracker t; t.frame(TO_80, 60.f, false, false); t.frame(TO_80, 80.f, false, false);
+      check("extending the end sends nothing itself", !t.configChanged(ON, 81.f));
+      check("extending the end deafens again", t.frame(ON, 81.f, false, false) == true); }
+}
+
+static void range() {
+    using enum RangeThumb;
+    check("slider left edge is 0", rangeValue(-5.f, 200.f) == 0.f);
+    check("slider right edge is 100", rangeValue(500.f, 200.f) == 100.f);
+    check("slider snaps to whole percents", rangeValue(101.1f, 200.f) == 51.f);
+    check("near start picks start", pickThumb(30.f, 20.f, 80.f) == Start);
+    check("near end picks end", pickThumb(70.f, 20.f, 80.f) == End);
+    check("together, left picks start", pickThumb(40.f, 50.f, 50.f) == Start);
+    check("together, right picks end", pickThumb(60.f, 50.f, 50.f) == End);
+    check("together at 100 picks start", pickThumb(100.f, 100.f, 100.f) == Start);
+    check("together at 0 picks end", pickThumb(0.f, 0.f, 0.f) == End);
+    Range r { 20.f, 80.f };
+    check("start stops at the end", moveThumb(r, Start, 95.f) == Range(80.f, 80.f));
+    check("end stops at the start", moveThumb(r, End, 5.f) == Range(20.f, 20.f));
+    check("start moves freely below the end", moveThumb(r, Start, 33.f) == Range(33.f, 80.f));
 }
 
 static void deafenIntent() {
@@ -133,21 +173,25 @@ static void levels() {
 }
 
 static void levelEdits() {
-    check("untouched popup saves nothing", !levelEdit(ON, true, false, 50.f));
-    auto off = levelEdit(ON, false, false, 50.f);
-    check("toggle is saved", off && !off->enabled && off->percent == 50.f);
-    auto pct = levelEdit(ON, true, true, 75.f);
-    check("percent is saved", pct && pct->enabled && pct->percent == 75.f);
-    auto high = levelEdit(ON, true, true, 250.f);
-    check("percent is clamped", high && high->percent == 100.f);
-    check("unreadable percent saves nothing", !levelEdit(ON, true, true, std::nullopt));
-    auto both = levelEdit(ON, false, true, std::nullopt);
-    check("unreadable percent keeps the old one", both && !both->enabled && both->percent == 50.f);
+    auto none = std::nullopt;
+    check("untouched popup saves nothing", !levelEdit(ON, true, none, none));
+    auto off = levelEdit(ON, false, none, none);
+    check("toggle is saved and keeps the range", off && !off->enabled && off->start == 50.f && off->end == 100.f);
+    auto start = levelEdit(ON, true, 75.f, none);
+    check("start is saved", start && start->enabled && start->start == 75.f && start->end == 100.f);
+    auto end = levelEdit(ON, true, none, 90.f);
+    check("end is saved", end && end->start == 50.f && end->end == 90.f);
+    auto wild = levelEdit(ON, true, -5.f, 250.f);
+    check("range is clamped", wild && wild->start == 0.f && wild->end == 100.f);
+    auto swapped = levelEdit(ON, true, 90.f, 30.f);
+    check("backwards range is swapped", swapped && swapped->start == 30.f && swapped->end == 90.f);
 }
 
 int main() {
     levels();
     levelEdits();
+    runRange();
+    range();
     authStep();
     framing();
     paths();
