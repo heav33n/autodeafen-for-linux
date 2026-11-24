@@ -7,6 +7,8 @@
 #include <windows.h>
 #include <cstddef>
 #include <fstream>
+#include <random>
+#include <string>
 
 namespace {
     bool restrict(std::filesystem::path const& folder) {
@@ -33,14 +35,16 @@ namespace {
         bool ok = false;
         if (std::ofstream out(file); out) ok = static_cast<bool>(out << "x" << std::flush);
         std::error_code error;
-        return ok && std::filesystem::remove(file, error);
+        // Even after a failed write, or the trial folder could not be removed.
+        return std::filesystem::remove(file, error) && ok;
     }
 }
 
 bool makePrivate(std::filesystem::path const& folder) {
-    auto trial = folder / "permission-test";
+    // A new name every time, so a leftover from a crash cannot get in the way.
+    std::random_device random;
+    auto trial = folder / ("permission-test-" + std::to_string(random()) + std::to_string(random()));
     std::error_code error;
-    std::filesystem::remove(trial, error);
     if (!std::filesystem::create_directory(trial, error)) return false;
     bool safe = restrict(trial) && usable(trial);
     std::filesystem::remove(trial, error);

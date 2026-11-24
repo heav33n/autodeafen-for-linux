@@ -9,6 +9,8 @@ x86_64-w64-mingw32-g++ -std=c++23 -Wall -Wextra -static -mwindows -o build-tests
 for wine in "$@"; do
     tmp=$(mktemp -d); mkdir "$tmp/package" "$tmp/save dir"
     chmod 755 "$tmp/save dir"
+    # As left by a crash during the trial. Must not stop the folder becoming private.
+    mkdir "$tmp/save dir/permission-test"; echo x > "$tmp/save dir/permission-test/file"
     cp build-helper/autodeafen-helper helper/autodeafen-start "$tmp/package"
     win() { printf 'Z:%s' "$1" | tr / '\\'; }
     echo "## $wine"
