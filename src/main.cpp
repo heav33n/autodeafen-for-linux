@@ -76,17 +76,36 @@ class $modify(PlayLayer) {
 };
 
 class $modify(AutoDeafenPauseLayer, PauseLayer) {
+    static void onModify(auto& self) {
+        // node-ids names the menus, so it has to go first.
+        if (auto res = self.setHookPriorityAfterPost("PauseLayer::customSetup", "geode.node-ids"); !res) {
+            log::warn("Could not run after node-ids: {}", res.unwrapErr());
+        }
+    }
+
     void customSetup() {
         PauseLayer::customSetup();
-        auto menu = this->getChildByID("right-button-menu");
-        if (!menu) return;
         auto sprite = CCSprite::createWithSpriteFrameName("GJ_musicOffBtn_001.png");
         sprite->setScale(.7f);
         auto button = CCMenuItemExt::createSpriteExtra(sprite, [](auto) {
             LevelPopup::create(s_levelKey)->show();
         });
         button->setID("deafen-button"_spr);
+
+        if (auto menu = this->getChildByIDRecursive("right-button-menu")) {
+            menu->addChild(button);
+            menu->updateLayout();
+            auto at = menu->convertToWorldSpace(button->getPosition());
+            log::info("Pause button in right-button-menu at {}, {}, visible {}", at.x, at.y, menu->isVisible());
+            return;
+        }
+
+        log::warn("No right-button-menu, adding the pause button on its own");
+        auto size = CCDirector::get()->getWinSize();
+        auto menu = CCMenu::create();
+        menu->setID("deafen-menu"_spr);
+        menu->setPosition({ size.width - 30.f, size.height / 2.f });
         menu->addChild(button);
-        menu->updateLayout();
+        this->addChild(menu);
     }
 };
