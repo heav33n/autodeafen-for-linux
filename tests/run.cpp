@@ -7,6 +7,8 @@
 #include "../src/range.hpp"
 #include "../src/run_tracker.hpp"
 #include "../src/socket_paths.hpp"
+#include <cmath>
+#include <limits>
 #include <optional>
 #include <string>
 
@@ -187,7 +189,51 @@ static void levelEdits() {
     check("backwards range is swapped", swapped && swapped->start == 30.f && swapped->end == 90.f);
 }
 
+static void safety() {
+    constexpr float NAN_F = std::numeric_limits<float>::quiet_NaN();
+    { RunTracker t; t.frame(ON, 60.f, false, false);
+      check("switching to practice undeafens", t.frame(ON, 61.f, true, false) == false);
+      check("practice stays quiet", !t.frame(ON, 62.f, true, false));
+      check("leaving practice deafens again", t.frame(ON, 63.f, false, false) == true); }
+    { RunTracker t; auto c = ON; c.practice = true; t.frame(c, 60.f, false, false);
+      check("practice allowed stays deafened", !t.frame(c, 61.f, true, false)); }
+    { RunTracker t; check("broken percent never deafens", !t.frame(ON, NAN_F, false, false)); }
+    { RunTracker t; t.frame(ON, 60.f, false, false); t.frame(ON, NAN_F, false, false);
+      check("broken percent still undeafens at the end", t.ended() == false); }
+
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.observed(false);
+      check("player undeafened mid-run: not deafened again", !i.needsCheck());
+      i.want(false);
+      check("player took over: never undeafened by us", !i.needsCheck());
+      i.want(true);
+      check("next run deafens normally", i.needsCheck() && i.next(false) == true); }
+    { DeafenIntent i; i.want(true); i.next(false); i.observed(false);
+      check("old update before our deafen is ignored", i.needsCheck()); }
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.observed(true); i.want(false);
+      check("unrelated update keeps it ours", i.needsCheck()); }
+
+    auto fixed = sanitized({ .enabled = true, .start = -20.f, .end = 900.f, .practice = false });
+    check("saved range is clamped", fixed.start == 0.f && fixed.end == 100.f);
+    fixed = sanitized({ .enabled = true, .start = 80.f, .end = 20.f, .practice = true });
+    check("saved range is put in order", fixed.start == 20.f && fixed.end == 80.f && fixed.practice);
+    fixed = sanitized({ .enabled = true, .start = NAN_F, .end = NAN_F, .practice = false });
+    check("broken saved range becomes the defaults", fixed.start == 50.f && fixed.end == 100.f);
+    fixed = sanitized({ .enabled = true, .start = INFINITY, .end = -INFINITY, .practice = false });
+    check("infinite saved range becomes the defaults", fixed.start == 50.f && fixed.end == 100.f);
+    auto edit = levelEdit(ON, true, NAN_F, std::nullopt);
+    check("broken typed value is not saved", edit && std::isfinite(edit->start));
+
+    check("bad grant is a refusal", isRefusal(400, "invalid_grant"));
+    check("bad client is a refusal", isRefusal(401, "invalid_client"));
+    check("rate limit is not a refusal", !isRefusal(429, "rate_limited"));
+    check("blocked network is not a refusal", !isRefusal(403, "forbidden"));
+    check("server error is not a refusal", !isRefusal(500, "x"));
+    check("login page without a token is not a refusal", !isRefusal(200, ""));
+    check("400 without a reason is not a refusal", !isRefusal(400, ""));
+}
+
 int main() {
+    safety();
     levels();
     levelEdits();
     runRange();

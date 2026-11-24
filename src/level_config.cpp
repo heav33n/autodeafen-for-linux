@@ -20,12 +20,12 @@ RunConfig level_config::load(std::string const& key) {
         .end = static_cast<float>(mod->getSettingValue<double>("end")),
         .practice = mod->getSettingValue<bool>("practice"),
     };
-    if (key.empty() || !mod->hasSavedValue(key)) return config;
+    if (key.empty() || !mod->hasSavedValue(key)) return sanitized(config);
     auto saved = mod->getSavedValue<matjson::Value>(key);
     config.enabled = saved["enabled"].asBool().unwrapOr(bool(config.enabled));
     config.start = static_cast<float>(saved["percent"].asDouble().unwrapOr(double(config.start)));
     config.end = static_cast<float>(saved["end"].asDouble().unwrapOr(double(config.end)));
-    return config;
+    return sanitized(config);
 }
 
 void level_config::save(std::string const& key, LevelEdit const& edit) {

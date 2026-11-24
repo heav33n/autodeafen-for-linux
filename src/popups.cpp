@@ -13,6 +13,8 @@ namespace {
         switch (status) {
             case LinkStatus::Connected: return { "Discord: Connected", { 80, 220, 110 } };
             case LinkStatus::WaitingForApproval: return { "Press Authorize in Discord", { 255, 210, 80 } };
+            case LinkStatus::BadApp: return { "Discord does not know that client ID", { 255, 100, 100 } };
+            case LinkStatus::Refused: return { "Discord refused, trying again", { 255, 210, 80 } };
             case LinkStatus::NeedSetup: return { "Discord: Setup needed", { 255, 210, 80 } };
             case LinkStatus::Unsupported: return { "This Proton version is not supported", { 255, 100, 100 } };
             case LinkStatus::Disconnected: break;
@@ -71,6 +73,7 @@ bool LevelPopup::init(std::string levelKey) {
             m_endInput->setString(numToString(range.end, 2));
         }
     });
+    if (!m_slider) return false;
     m_slider->setRange({ m_before.start, m_before.end });
     m_mainLayer->addChildAtPosition(m_slider, Anchor::Center, { 0.f, -30.f });
 
@@ -81,7 +84,7 @@ bool LevelPopup::init(std::string levelKey) {
     this->schedule(schedule_selector(LevelPopup::refreshStatus), .5f);
 
     m_buttonMenu->addChildAtPosition(
-        makeButton("Discord Setup", [] { SetupPopup::create()->show(); }), Anchor::Center, { 0.f, -88.f }
+        makeButton("Discord Setup", [] { if (auto popup = SetupPopup::create()) popup->show(); }), Anchor::Center, { 0.f, -88.f }
     );
     handleTouchPriority(this);
     return true;

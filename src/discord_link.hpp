@@ -1,6 +1,8 @@
 #pragma once
 
-enum class LinkStatus { NeedSetup, Disconnected, Unsupported, WaitingForApproval, Connected };
+enum class LinkStatus {
+    NeedSetup, BadApp, Disconnected, Unsupported, WaitingForApproval, Refused, Connected
+};
 
 // Keeps a connection to Discord on its own thread. Nothing here blocks the game.
 namespace link {

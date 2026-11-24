@@ -49,6 +49,14 @@ public:
         if (!m_confirmed) m_ours = false;
     }
 
+    // Discord's state changed outside our requests. If the player undeafened
+    // themself, it is theirs for the rest of the run.
+    void observed(bool deaf) {
+        if (deaf || !m_wanted || !m_confirmed) return;
+        m_ours = m_confirmed = false;
+        m_leaveAlone = true;
+    }
+
     void linkLost() {
         m_ours = m_confirmed = false;
     }

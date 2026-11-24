@@ -26,7 +26,10 @@ namespace {
         std::mutex mutex;
         std::condition_variable changed;
         bool started = false, stopping = false, done = false;
+        // Stays set until Discord is asked, so it survives Discord being closed.
         bool authorize = false;
+        // Cuts a wait short once.
+        bool poke = false;
         bool loginFailed = false;
         bool wanted = false;
         LinkStatus status = LinkStatus::Disconnected;
@@ -41,6 +44,7 @@ namespace {
         DiscordSocket m_socket;
         DeafenIntent m_intent;
         unsigned m_nonce = 0;
+        bool m_closedByDiscord = false;
 
         static void setStatus(LinkStatus status) {
             std::lock_guard lock(shared().mutex);
@@ -59,8 +63,14 @@ namespace {
             std::unique_lock lock(shared().mutex);
             shared().changed.wait_for(lock, time, until);
         }
-        static void pauseBeforeRetry() {
-            waitFor(RETRY_WAIT, [] { return shared().stopping || shared().authorize; });
+        static void pause(std::chrono::milliseconds time = RETRY_WAIT) {
+            waitFor(time, [] { return shared().stopping || shared().poke; });
+            std::lock_guard lock(shared().mutex);
+            shared().poke = false;
+        }
+        static bool takeAuthorize() {
+            std::lock_guard lock(shared().mutex);
+            return std::exchange(shared().authorize, false);
         }
 
         // One message from Discord. Answers pings itself.
@@ -69,11 +79,18 @@ namespace {
             if (!message) return {};
             auto& [op, body] = *message;
             if (op == PING) m_socket.send(PONG, body);
-            if (op == CLOSE) m_socket.close();
+            if (op == CLOSE) {
+                m_closedByDiscord = true;
+                m_socket.close();
+            }
             if (op != FRAME) return {};
             auto json = matjson::parse(body);
             if (!json) return {};
-            return std::move(json).unwrap();
+            auto value = std::move(json).unwrap();
+            if (value["evt"].asString().unwrapOrDefault() == "VOICE_SETTINGS_UPDATE") {
+                if (auto deaf = value["data"]["deaf"].asBool()) m_intent.observed(deaf.unwrap());
+            }
+            return value;
         }
 
         bool handshake(std::string const& appId) {
@@ -85,6 +102,16 @@ namespace {
                 if (json && (*json)["evt"].asString().unwrapOrDefault() == "READY") return true;
             }
             return false;
+        }
+
+        // Tells us when the player deafens or undeafens themself. Not essential.
+        void subscribe() {
+            auto nonce = std::to_string(++m_nonce);
+            auto json = matjson::makeObject({
+                { "cmd", "SUBSCRIBE" }, { "evt", "VOICE_SETTINGS_UPDATE" },
+                { "nonce", nonce }, { "args", matjson::Value::object() },
+            });
+            m_socket.send(FRAME, json.dump(matjson::NO_INDENTATION));
         }
 
         struct Reply {
@@ -121,7 +148,7 @@ namespace {
                 "AUTHORIZE", matjson::makeObject({ { "client_id", appId }, { "scopes", scopes } }), APPROVAL_WAIT
             );
             auto code = reply.data["code"].asString().unwrapOrDefault();
-            return reply.ok && !code.empty() && auth::exchange(code) == auth::Result::Ok;
+            return reply.ok && !code.empty() && !stopping() && auth::exchange(code) == auth::Result::Ok;
         }
 
         enum class LoginResult { Ok, NeedSetup, TryLater };
@@ -141,6 +168,7 @@ namespace {
                         break;
                     }
                     case AuthStep::Refresh:
+                        if (stopping()) return LoginResult::TryLater;
                         switch (auth::refresh()) {
                             case auth::Result::Ok:
                                 rejected = false;
@@ -148,6 +176,10 @@ namespace {
                             case auth::Result::Rejected:
                                 break;
                             case auth::Result::NoNetwork:
+                                // Do not hammer Discord's login server.
+                                m_socket.close();
+                                setStatus(LinkStatus::Disconnected);
+                                pause(30000ms);
                                 return LoginResult::TryLater;
                         }
                         // Refresh once only, whether it worked or not.
@@ -175,13 +207,21 @@ namespace {
         }
 
         void serve() {
+            int failures = 0;
             while (m_socket.isOpen() && !interrupted()) {
                 {
                     std::lock_guard lock(shared().mutex);
                     m_intent.want(shared().wanted);
                 }
                 if (!m_intent.needsCheck()) this->read(POLL);
-                else if (!this->applyIntent(REPLY_WAIT, false)) {
+                else if (this->applyIntent(REPLY_WAIT, false)) {
+                    if (failures) setStatus(LinkStatus::Connected);
+                    failures = 0;
+                }
+                else {
+                    setStatus(LinkStatus::Refused);
+                    // Start over from login: the login may have been revoked.
+                    if (++failures == 3) break;
                     waitFor(1000ms, [] { return shared().stopping || shared().authorize; });
                 }
             }
@@ -195,57 +235,78 @@ namespace {
             bool authorize, failed;
             {
                 std::lock_guard lock(shared().mutex);
-                authorize = std::exchange(shared().authorize, false);
+                authorize = shared().authorize;
                 if (authorize) shared().loginFailed = false;
                 failed = shared().loginFailed;
             }
-            auto needSetup = !login.hasApp() || failed
-                || (!authorize && login.token.empty() && login.refresh.empty());
-            if (needSetup) {
+            bool hasLogin = !login.token.empty() || !login.refresh.empty();
+            if (!login.hasApp() || failed || (!authorize && !hasLogin)) {
                 setStatus(LinkStatus::NeedSetup);
-                return pauseBeforeRetry();
+                return pause();
             }
 
             auto dir = runtimeDir(std::getenv("WINE_HOST_XDG_RUNTIME_DIR"), std::getenv("XDG_RUNTIME_DIR"));
+            m_closedByDiscord = false;
             switch (m_socket.connect(dir)) {
                 case DiscordSocket::Result::Unsupported:
                     setStatus(LinkStatus::Unsupported);
-                    return pauseBeforeRetry();
+                    return pause();
                 case DiscordSocket::Result::NotRunning:
                     setStatus(LinkStatus::Disconnected);
-                    return pauseBeforeRetry();
+                    return pause();
                 case DiscordSocket::Result::Connected:
                     break;
             }
 
-            bool ready = this->handshake(login.appId);
-            auto result = LoginResult::TryLater;
-            if (ready && authorize && !this->askForApproval(login.appId)) result = LoginResult::NeedSetup;
-            else if (ready) result = this->login();
-
-            if (result == LoginResult::NeedSetup) {
-                std::lock_guard lock(shared().mutex);
-                shared().loginFailed = true;
-                shared().status = LinkStatus::NeedSetup;
-            }
-            if (result != LoginResult::Ok) {
-                if (result == LoginResult::TryLater) setStatus(LinkStatus::Disconnected);
+            if (!this->handshake(login.appId)) {
+                if (m_closedByDiscord) takeAuthorize();
+                setStatus(m_closedByDiscord ? LinkStatus::BadApp : LinkStatus::Disconnected);
                 m_socket.close();
-                return pauseBeforeRetry();
+                return pause();
+            }
+            // Saying no to the popup keeps a login that still works.
+            if (takeAuthorize() && !this->askForApproval(login.appId) && !hasLogin) {
+                setStatus(LinkStatus::NeedSetup);
+                m_socket.close();
+                return pause();
+            }
+
+            auto result = this->login();
+            if (result != LoginResult::Ok) {
+                if (result == LoginResult::NeedSetup) {
+                    std::lock_guard lock(shared().mutex);
+                    shared().loginFailed = true;
+                }
+                setStatus(result == LoginResult::NeedSetup ? LinkStatus::NeedSetup : LinkStatus::Disconnected);
+                m_socket.close();
+                return pause();
             }
 
             log::info("Connected to Discord");
+            this->subscribe();
             setStatus(LinkStatus::Connected);
             this->serve();
             m_socket.close();
             m_intent.linkLost();
             setStatus(LinkStatus::Disconnected);
-            if (!interrupted()) pauseBeforeRetry();
+            if (!interrupted()) pause();
         }
 
     public:
         void run() {
-            while (!stopping()) this->session();
+            while (!stopping()) {
+                // An exception leaving a thread would crash the game.
+                try {
+                    this->session();
+                }
+                catch (std::exception const&) {
+                    log::error("Discord link failed, starting over");
+                    m_socket.close();
+                    m_intent.linkLost();
+                    setStatus(LinkStatus::Disconnected);
+                    pause();
+                }
+            }
             m_socket.close();
             std::lock_guard lock(shared().mutex);
             shared().done = true;
@@ -276,6 +337,7 @@ void link::want(bool deaf) {
 void link::authorize() {
     std::lock_guard lock(shared().mutex);
     shared().authorize = true;
+    shared().poke = true;
     shared().changed.notify_all();
 }
 

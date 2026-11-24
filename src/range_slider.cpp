@@ -25,16 +25,19 @@ bool RangeSlider::init(float width, std::function<void(Range)> onChange) {
     this->setContentSize({ width, HEIGHT });
 
     m_fill = CCSprite::create("sliderBar.png");
+    if (!m_fill) return false;
     m_fill->setAnchorPoint({ 0.f, .5f });
     this->addChild(m_fill);
 
     auto groove = CCSprite::create("slidergroove.png");
+    if (!groove) return false;
     groove->setScaleX((width + 10.f) / groove->getContentWidth());
     groove->setPosition({ width / 2.f, HEIGHT / 2.f });
     this->addChild(groove);
 
     m_start = CCSprite::create("sliderthumb.png");
     m_end = CCSprite::create("sliderthumb.png");
+    if (!m_start || !m_end) return false;
     this->addChild(m_start);
     this->addChild(m_end);
 

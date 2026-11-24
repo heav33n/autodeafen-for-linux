@@ -1,5 +1,8 @@
 #pragma once
+#include <algorithm>
+#include <cmath>
 #include <optional>
+#include <utility>
 
 struct RunConfig {
     bool enabled;
@@ -8,6 +11,14 @@ struct RunConfig {
     float start, end;
     bool practice;
 };
+
+// Settings come from files people can edit, so never trust the numbers.
+inline RunConfig sanitized(RunConfig config) {
+    config.start = std::isfinite(config.start) ? std::clamp(config.start, 0.f, 100.f) : 50.f;
+    config.end = std::isfinite(config.end) ? std::clamp(config.end, 0.f, 100.f) : 100.f;
+    if (config.start > config.end) std::swap(config.start, config.end);
+    return config;
+}
 
 // Decides when a run should deafen or undeafen.
 // true = deafen, false = undeafen, nullopt = nothing to do.
@@ -23,6 +34,10 @@ public:
     std::optional<bool> frame(RunConfig config, float percent, bool inPractice, bool platformer) {
         if (m_over || platformer) return {};
         if (m_deafened) {
+            if (inPractice && !config.practice) {
+                m_deafened = false;
+                return false;
+            }
             if (config.end < 100.f && percent >= config.end) return this->ended();
             return {};
         }

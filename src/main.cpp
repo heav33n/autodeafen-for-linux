@@ -45,13 +45,13 @@ class $modify(PlayLayer) {
 
     void postUpdate(float dt) {
         PlayLayer::postUpdate(dt);
-        if (m_hasCompletedLevel || m_player1->m_isDead) return;
+        if (m_hasCompletedLevel || !m_player1 || m_player1->m_isDead || !m_level) return;
         apply(s_tracker.frame(s_config, this->getCurrentPercent(), m_isPracticeMode, m_level->isPlatformer()));
     }
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         PlayLayer::destroyPlayer(player, object);
-        if (m_player1->m_isDead) apply(s_tracker.ended());
+        if (m_player1 && m_player1->m_isDead) apply(s_tracker.ended());
     }
 
     void levelComplete() {
@@ -61,6 +61,7 @@ class $modify(PlayLayer) {
 
     void resetLevel() {
         apply(s_tracker.restarted());
+        s_config = level_config::load(s_levelKey);
         PlayLayer::resetLevel();
     }
 
@@ -88,9 +89,10 @@ class $modify(AutoDeafenPauseLayer, PauseLayer) {
     void customSetup() {
         PauseLayer::customSetup();
         auto sprite = CCSprite::createWithSpriteFrameName("GJ_musicOffBtn_001.png");
+        if (!sprite) return;
         sprite->setScale(.7f);
         auto button = CCMenuItemExt::createSpriteExtra(sprite, [](auto) {
-            LevelPopup::create(s_levelKey)->show();
+            if (auto popup = LevelPopup::create(s_levelKey)) popup->show();
         });
         button->setID("deafen-button"_spr);
 

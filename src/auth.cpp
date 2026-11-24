@@ -1,4 +1,5 @@
 #include "auth.hpp"
+#include "auth_step.hpp"
 #include <Geode/Geode.hpp>
 #include <Geode/utils/web.hpp>
 #include <mutex>
@@ -36,25 +37,25 @@ namespace {
         );
         web::WebRequest req;
         req.header("Content-Type", "application/x-www-form-urlencoded");
-        req.timeout(asp::Duration::fromSecs(15));
+        req.timeout(asp::Duration::fromSecs(5));
         req.bodyString(body);
         auto res = req.postSync("https://discord.com/api/oauth2/token");
 
         if (!res.ok()) {
             log::warn("Discord login request failed with code {}", res.code());
-            return res.code() >= 400 && res.code() < 500 && res.code() != 429
-                ? auth::Result::Rejected : auth::Result::NoNetwork;
+            auto error = res.json().unwrapOrDefault()["error"].asString().unwrapOrDefault();
+            return isRefusal(res.code(), error) ? auth::Result::Rejected : auth::Result::NoNetwork;
         }
         auto json = res.json().unwrapOrDefault();
         auto token = json["access_token"].asString().unwrapOrDefault();
-        if (token.empty()) return auth::Result::Rejected;
+        if (token.empty()) return auth::Result::NoNetwork;
 
         auth::Login updated;
         {
             std::lock_guard lock(s_mutex);
             // The user may have entered another app while this was in flight.
             if (s_login.appId != used.appId || s_login.secret != used.secret) {
-                return auth::Result::Rejected;
+                return auth::Result::NoNetwork;
             }
             s_login.token = std::move(token);
             s_login.refresh = json["refresh_token"].asString().unwrapOr(std::string(s_login.refresh));
