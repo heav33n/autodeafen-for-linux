@@ -1,4 +1,5 @@
 #include "check.hpp"
+#include "../src/auth_step.hpp"
 #include "../src/deafen_intent.hpp"
 #include "../src/frame.hpp"
 #include "../src/run_tracker.hpp"
@@ -89,10 +90,25 @@ static void paths() {
     check("first socket path", !p.empty() && p.front() == "/run/user/1000/discord-ipc-0");
     check("flatpak socket path", p.size() == 20 && p.back() == "/run/user/1000/app/com.discordapp.Discord/discord-ipc-9");
     check("too long gives none", socketPaths("/" + std::string(119, 'a')).empty());
+    check("Wine's name for the runtime dir wins", runtimeDir("/run/user/1", "/other") == "/run/user/1");
+    check("plain runtime dir is the fallback", runtimeDir(nullptr, "/other") == "/other");
+    check("empty Wine value uses the fallback", runtimeDir("", "/other") == "/other");
+    check("no runtime dir at all", runtimeDir(nullptr, nullptr).empty());
     check("no runtime dir gives none", socketPaths("").empty());
 }
 
+static void authStep() {
+    using enum AuthStep;
+    check("saved login is used", nextAuthStep(true, true, false, false) == UseToken);
+    check("rejected login is refreshed", nextAuthStep(true, true, true, false) == Refresh);
+    check("failed refresh needs setup", nextAuthStep(true, true, true, true) == NeedSetup);
+    check("rejected login without refresh needs setup", nextAuthStep(true, false, true, false) == NeedSetup);
+    check("refresh token alone is used", nextAuthStep(false, true, false, false) == Refresh);
+    check("nothing saved needs setup", nextAuthStep(false, false, false, false) == NeedSetup);
+}
+
 int main() {
+    authStep();
     framing();
     paths();
     runTracker();

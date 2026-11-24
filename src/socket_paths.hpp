@@ -3,6 +3,13 @@
 #include <string_view>
 #include <vector>
 
+// Wine hides XDG_RUNTIME_DIR from Windows programs and passes it on under
+// another name.
+inline std::string runtimeDir(char const* wineHost, char const* plain) {
+    if (wineHost && *wineHost) return wineHost;
+    return plain ? plain : "";
+}
+
 // Every place Discord may put its socket, most likely first.
 inline std::vector<std::string> socketPaths(std::string_view runtimeDir) {
     constexpr size_t MAX_PATH_LENGTH = 107; // sockaddr_un holds 108 with the terminator

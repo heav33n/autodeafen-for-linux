@@ -1,0 +1,13 @@
+{
+	"geode": "6.0.0-beta.2",
+	"gd": { "win": "2.2091" },
+	"id": "heav33n.autodeafen-for-linux",
+	"name": "AutoDeafen for Linux",
+	"version": "v0.1.0",
+	"developer": "heav33n",
+	"description": "Deafens Discord during good runs on Linux. No keybinds, no Discord plugin.",
+	"tags": ["utility", "enhancement"],
+	"dependencies": {
+		"geode.node-ids": ">=v1.24.0-beta.1"
+	}
+}
