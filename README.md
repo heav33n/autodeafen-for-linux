@@ -8,13 +8,13 @@ directly, so it works on pure Wayland with **no keybinds and no Discord plugin**
 
 ## Requirements
 
-Geometry Dash 2.2091, Geode 6, 64-bit Linux, and Proton or Wine:
+Geometry Dash 2.2091, Geode latest, 64-bit Linux, and Proton or Wine:
 
 | Runtime | How it reaches Discord |
 |---|---|
-| proton-cachyos 11, GE-Proton 11 | Directly. Played in-game on proton-cachyos 11 |
-| Valve Proton 9, 10, 11, Experimental, Hotfix | Helper. Connection tested, not yet played |
-| proton-cachyos 10, Wine 11.22 | Helper. Connection tested, not yet played |
+| proton-cachyos 11, GE-Proton 11 | Directly. Works. |
+| Valve Proton 9, 10, 11, Experimental, Hotfix | Helper. Works. |
+| proton-cachyos 10, Wine 11.22 | Helper. Haven't tested. |
 
 The helper is a small Linux program inside the mod, started only when Proton
 cannot open Discord's socket. It passes messages between the game and Discord on
