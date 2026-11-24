@@ -45,8 +45,18 @@ public:
 
     // Discord said no. A refused deafen never happened; a refused undeafen is
     // still owed.
-    void refused() {
-        if (!m_confirmed) m_ours = false;
+    void refused(bool deaf) {
+        if (deaf) m_ours = m_confirmed = false;
+    }
+
+    bool owesUndeafen() const {
+        return m_ours && !m_wanted;
+    }
+
+    // We are disconnecting, but the run may go on. Unlike want(false), this
+    // remembers a player who undeafened themself.
+    void release() {
+        m_wanted = false;
     }
 
     // Discord's state changed outside our requests. If the player undeafened

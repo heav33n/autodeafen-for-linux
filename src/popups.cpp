@@ -66,11 +66,11 @@ bool LevelPopup::init(std::string levelKey) {
     m_slider = RangeSlider::create(200.f, [this](Range range) {
         if (range.start != m_startEdit.value_or(m_before.start)) {
             m_startEdit = range.start;
-            m_startInput->setString(numToString(range.start, 2));
+            m_startInput->setString(formatPercent(range.start));
         }
         if (range.end != m_endEdit.value_or(m_before.end)) {
             m_endEdit = range.end;
-            m_endInput->setString(numToString(range.end, 2));
+            m_endInput->setString(formatPercent(range.end));
         }
     });
     if (!m_slider) return false;
@@ -95,11 +95,12 @@ TextInput* LevelPopup::addInput(char const* label, float x, float value, std::op
     auto input = TextInput::create(80.f, "0-100");
     input->setCommonFilter(CommonFilter::Float);
     input->setMaxCharCount(6);
-    input->setString(numToString(value, 2));
+    input->setString(formatPercent(value));
     input->setCallback([this, &edit](std::string const& text) {
         auto typed = numFromString<float>(text).ok();
-        if (!typed) return;
-        edit = std::clamp(*typed, 0.f, 100.f);
+        // Unreadable, such as an empty box, means keep what was saved.
+        if (typed) edit = std::clamp(*typed, 0.f, 100.f);
+        else edit.reset();
         auto start = m_startEdit.value_or(m_before.start), end = m_endEdit.value_or(m_before.end);
         m_slider->setRange({ std::min(start, end), std::max(start, end) });
     });

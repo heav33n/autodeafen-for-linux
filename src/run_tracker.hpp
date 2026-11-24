@@ -17,6 +17,10 @@ inline RunConfig sanitized(RunConfig config) {
     config.start = std::isfinite(config.start) ? std::clamp(config.start, 0.f, 100.f) : 50.f;
     config.end = std::isfinite(config.end) ? std::clamp(config.end, 0.f, 100.f) : 100.f;
     if (config.start > config.end) std::swap(config.start, config.end);
+    if (config.start == config.end) {
+        config.end = std::min(config.start + 1.f, 100.f);
+        config.start = std::min(config.start, config.end - 1.f);
+    }
     return config;
 }
 

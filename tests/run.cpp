@@ -72,8 +72,8 @@ static void range() {
     check("together at 100 picks start", pickThumb(100.f, 100.f, 100.f) == Start);
     check("together at 0 picks end", pickThumb(0.f, 0.f, 0.f) == End);
     Range r { 20.f, 80.f };
-    check("start stops at the end", moveThumb(r, Start, 95.f) == Range(80.f, 80.f));
-    check("end stops at the start", moveThumb(r, End, 5.f) == Range(20.f, 20.f));
+    check("start stops just before the end", moveThumb(r, Start, 95.f) == Range(79.f, 80.f));
+    check("end stops just after the start", moveThumb(r, End, 5.f) == Range(20.f, 21.f));
     check("start moves freely below the end", moveThumb(r, Start, 33.f) == Range(33.f, 80.f));
 }
 
@@ -110,9 +110,9 @@ static void deafenIntent() {
       check("missed reply undeafens at the end", i.next(true) == false); }
     { DeafenIntent i; i.want(true); i.next(false);
       check("lost request is sent again", i.next(false) == true); }
-    { DeafenIntent i; i.want(true); i.next(false); i.refused(); i.want(false);
+    { DeafenIntent i; i.want(true); i.next(false); i.refused(true); i.want(false);
       check("refused deafen is not ours", !i.needsCheck()); }
-    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.want(false); i.next(true); i.refused();
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.want(false); i.next(true); i.refused(false);
       check("refused undeafen is tried again", i.needsCheck() && i.next(true) == false); }
     { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.linkLost(); i.want(false);
       check("lost link never undeafens", !i.next(true)); }
@@ -232,7 +232,37 @@ static void safety() {
     check("400 without a reason is not a refusal", !isRefusal(400, ""));
 }
 
+static void review2() {
+    { DeafenIntent i; i.want(true); i.next(false); i.want(false); i.next(true); i.refused(false);
+      check("refused undeafen after a lost reply is still owed", i.needsCheck() && i.next(true) == false); }
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true);
+      check("deafened mid-run owes nothing yet", !i.owesUndeafen());
+      i.want(false);
+      check("after the run an undeafen is owed", i.owesUndeafen());
+      i.applied(false);
+      check("owed undeafen is settled", !i.owesUndeafen()); }
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.observed(false);
+      i.release(); i.linkLost(); i.want(true);
+      check("player's choice survives a reconnect", !i.needsCheck()); }
+    { DeafenIntent i; i.want(true); i.next(false); i.applied(true); i.release();
+      check("leaving undeafens", i.needsCheck() && i.next(true) == false); }
+
+    auto equal = sanitized({ .enabled = true, .start = 40.f, .end = 40.f, .practice = false });
+    check("equal range is widened", equal.start == 40.f && equal.end == 41.f);
+    equal = sanitized({ .enabled = true, .start = 100.f, .end = 100.f, .practice = false });
+    check("equal range at the end is widened", equal.start == 99.f && equal.end == 100.f);
+    auto close = sanitized({ .enabled = true, .start = 97.5f, .end = 98.f, .practice = false });
+    check("small ranges are kept", close.start == 97.5f && close.end == 98.f);
+
+    check("whole percent has no decimals", formatPercent(3.f) == "3");
+    check("hundred", formatPercent(100.f) == "100");
+    check("zero", formatPercent(0.f) == "0");
+    check("one decimal", formatPercent(3.5f) == "3.5");
+    check("two decimals", formatPercent(97.25f) == "97.25");
+}
+
 int main() {
+    review2();
     safety();
     levels();
     levelEdits();

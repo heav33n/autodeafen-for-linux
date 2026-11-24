@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <cmath>
+#include <string>
 
 enum class RangeThumb { Start, End };
 
@@ -26,7 +27,20 @@ inline RangeThumb pickThumb(float value, float start, float end) {
 }
 
 inline Range moveThumb(Range range, RangeThumb thumb, float value) {
-    if (thumb == RangeThumb::Start) range.start = std::min(value, range.end);
-    else range.end = std::max(value, range.start);
+    // Always at least one percent apart, or it would never deafen.
+    if (thumb == RangeThumb::Start) range.start = std::max(0.f, std::min(value, range.end - 1.f));
+    else range.end = std::min(100.f, std::max(value, range.start + 1.f));
     return range;
+}
+
+// Two decimals at most, without trailing zeros.
+inline std::string formatPercent(float value) {
+    auto hundredths = std::lround(value * 100.f);
+    auto text = std::to_string(hundredths / 100);
+    auto rest = hundredths % 100;
+    if (rest == 0) return text;
+    text += '.';
+    text += static_cast<char>('0' + rest / 10);
+    if (rest % 10) text += static_cast<char>('0' + rest % 10);
+    return text;
 }

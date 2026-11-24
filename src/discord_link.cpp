@@ -21,6 +21,7 @@ namespace {
     constexpr auto APPROVAL_WAIT = 120000ms;
     constexpr auto RETRY_WAIT = 5000ms;
     constexpr auto POLL = 50ms;
+    constexpr int INVALID_CLIENT_ID = 4000;
 
     struct Shared {
         std::mutex mutex;
@@ -44,7 +45,9 @@ namespace {
         DiscordSocket m_socket;
         DeafenIntent m_intent;
         unsigned m_nonce = 0;
-        bool m_closedByDiscord = false;
+        // The app ID Discord said it does not know.
+        std::string m_badApp;
+        int m_closeCode = 0;
 
         static void setStatus(LinkStatus status) {
             std::lock_guard lock(shared().mutex);
@@ -70,7 +73,12 @@ namespace {
         }
         static bool takeAuthorize() {
             std::lock_guard lock(shared().mutex);
+            shared().poke = false;
             return std::exchange(shared().authorize, false);
+        }
+        static bool authorizePending() {
+            std::lock_guard lock(shared().mutex);
+            return shared().authorize;
         }
 
         // One message from Discord. Answers pings itself.
@@ -80,7 +88,8 @@ namespace {
             auto& [op, body] = *message;
             if (op == PING) m_socket.send(PONG, body);
             if (op == CLOSE) {
-                m_closedByDiscord = true;
+                auto why = matjson::parse(body).unwrapOrDefault();
+                m_closeCode = static_cast<int>(why["code"].asInt().unwrapOr(0));
                 m_socket.close();
             }
             if (op != FRAME) return {};
@@ -121,7 +130,8 @@ namespace {
         };
 
         Reply request(
-            char const* cmd, matjson::Value args, std::chrono::milliseconds wait, bool evenIfStopping = false
+            char const* cmd, matjson::Value args, std::chrono::milliseconds wait,
+            bool evenIfStopping = false, bool untilAuthorize = false
         ) {
             auto nonce = std::to_string(++m_nonce);
             auto json = matjson::makeObject({ { "cmd", cmd }, { "nonce", nonce }, { "args", std::move(args) } });
@@ -130,6 +140,8 @@ namespace {
             auto deadline = DiscordSocket::Clock::now() + wait;
             while (m_socket.isOpen() && DiscordSocket::Clock::now() < deadline) {
                 if (!evenIfStopping && stopping()) return {};
+                // Pressed Authorize again: this popup no longer counts.
+                if (untilAuthorize && authorizePending()) return {};
                 auto reply = this->read(POLL);
                 if (!reply || (*reply)["nonce"].asString().unwrapOrDefault() != nonce) continue;
                 bool ok = (*reply)["evt"].asString().unwrapOrDefault() != "ERROR";
@@ -145,7 +157,7 @@ namespace {
             setStatus(LinkStatus::WaitingForApproval);
             std::vector<matjson::Value> scopes { "rpc", "rpc.voice.read", "rpc.voice.write" };
             auto reply = this->request(
-                "AUTHORIZE", matjson::makeObject({ { "client_id", appId }, { "scopes", scopes } }), APPROVAL_WAIT
+                "AUTHORIZE", matjson::makeObject({ { "client_id", appId }, { "scopes", scopes } }), APPROVAL_WAIT, false, true
             );
             auto code = reply.data["code"].asString().unwrapOrDefault();
             return reply.ok && !code.empty() && !stopping() && auth::exchange(code) == auth::Result::Ok;
@@ -202,7 +214,7 @@ namespace {
                 "SET_VOICE_SETTINGS", matjson::makeObject({ { "deaf", *send } }), wait, evenIfStopping
             );
             if (reply.ok) m_intent.applied(*send);
-            else if (reply.answered) m_intent.refused();
+            else if (reply.answered) m_intent.refused(*send);
             return reply.ok;
         }
 
@@ -213,21 +225,27 @@ namespace {
                     std::lock_guard lock(shared().mutex);
                     m_intent.want(shared().wanted);
                 }
-                if (!m_intent.needsCheck()) this->read(POLL);
+                if (!m_intent.needsCheck()) {
+                    if (std::exchange(failures, 0)) setStatus(LinkStatus::Connected);
+                    this->read(POLL);
+                }
                 else if (this->applyIntent(REPLY_WAIT, false)) {
                     if (failures) setStatus(LinkStatus::Connected);
                     failures = 0;
                 }
                 else {
                     setStatus(LinkStatus::Refused);
-                    // Start over from login: the login may have been revoked.
-                    if (++failures == 3) break;
+                    // Start over from login: the login may have been revoked. Not
+                    // while the player is owed an undeafen, which must not be forgotten.
+                    if (++failures >= 3 && !m_intent.owesUndeafen()) break;
                     waitFor(1000ms, [] { return shared().stopping || shared().authorize; });
                 }
             }
             // Leaving on purpose: do not leave the player deafened.
-            m_intent.want(false);
-            if (m_socket.isOpen() && m_intent.needsCheck()) this->applyIntent(200ms, true);
+            m_intent.release();
+            if (m_socket.isOpen() && m_intent.needsCheck()) {
+                this->applyIntent(stopping() ? 150ms : REPLY_WAIT, true);
+            }
         }
 
         void session() {
@@ -245,8 +263,13 @@ namespace {
                 return pause();
             }
 
+            if (!authorize && login.appId == m_badApp) {
+                setStatus(LinkStatus::BadApp);
+                return pause();
+            }
+
             auto dir = runtimeDir(std::getenv("WINE_HOST_XDG_RUNTIME_DIR"), std::getenv("XDG_RUNTIME_DIR"));
-            m_closedByDiscord = false;
+            m_closeCode = 0;
             switch (m_socket.connect(dir)) {
                 case DiscordSocket::Result::Unsupported:
                     setStatus(LinkStatus::Unsupported);
@@ -259,10 +282,20 @@ namespace {
             }
 
             if (!this->handshake(login.appId)) {
-                if (m_closedByDiscord) takeAuthorize();
-                setStatus(m_closedByDiscord ? LinkStatus::BadApp : LinkStatus::Disconnected);
+                bool badApp = m_closeCode == INVALID_CLIENT_ID;
+                if (badApp && auth::current().appId == login.appId) {
+                    takeAuthorize();
+                    m_badApp = login.appId;
+                }
+                setStatus(badApp ? LinkStatus::BadApp : LinkStatus::Disconnected);
                 m_socket.close();
                 return pause();
+            }
+            m_badApp.clear();
+            // A different app was entered while connecting: start over with it.
+            if (auto now = auth::current(); now.appId != login.appId || now.secret != login.secret) {
+                m_socket.close();
+                return;
             }
             // Saying no to the popup keeps a login that still works.
             if (takeAuthorize() && !this->askForApproval(login.appId) && !hasLogin) {
