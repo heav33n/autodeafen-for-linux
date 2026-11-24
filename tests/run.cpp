@@ -1,7 +1,10 @@
 #include "check.hpp"
 #include "../src/deafen_intent.hpp"
+#include "../src/frame.hpp"
 #include "../src/run_tracker.hpp"
+#include "../src/socket_paths.hpp"
 #include <optional>
+#include <string>
 
 static constexpr RunConfig ON { .enabled = true, .percent = 50.f, .practice = false };
 
@@ -57,7 +60,41 @@ static void deafenIntent() {
       check("lost link never undeafens", !i.next(true)); }
 }
 
+static void framing() {
+    using Frame = std::pair<uint32_t, std::string>;
+    check("encodes little endian", encodeFrame(1, "{}") == std::string("\1\0\0\0\2\0\0\0{}", 10));
+    { FrameReader r; r.feed(encodeFrame(1, "{\"a\":1}"));
+      check("round trip", r.pop() == Frame(1, "{\"a\":1}"));
+      check("nothing left", !r.pop()); }
+    { FrameReader r; std::optional<Frame> got; bool early = false;
+      auto bytes = encodeFrame(3, "hello");
+      for (size_t i = 0; i < bytes.size(); ++i) {
+          r.feed(std::string_view(bytes).substr(i, 1));
+          got = r.pop();
+          if (got && i + 1 < bytes.size()) early = true;
+      }
+      check("one byte at a time", !early && got == Frame(3, "hello")); }
+    { FrameReader r; r.feed(encodeFrame(1, "x") + encodeFrame(2, "yy"));
+      check("two frames: first", r.pop() == Frame(1, "x"));
+      check("two frames: second", r.pop() == Frame(2, "yy")); }
+    { FrameReader r; r.feed(std::string("\1\0\0\0\1\0\x10\0", 8));
+      check("1048577 bytes is broken", !r.pop() && r.broken()); }
+    { FrameReader r; r.feed(std::string("\1\0\0\0\0\0\x10\0", 8));
+      check("1048576 bytes is fine", !r.pop() && !r.broken()); }
+}
+
+static void paths() {
+    auto p = socketPaths("/run/user/1000");
+    check("20 socket paths", p.size() == 20);
+    check("first socket path", !p.empty() && p.front() == "/run/user/1000/discord-ipc-0");
+    check("flatpak socket path", p.size() == 20 && p.back() == "/run/user/1000/app/com.discordapp.Discord/discord-ipc-9");
+    check("too long gives none", socketPaths("/" + std::string(119, 'a')).empty());
+    check("no runtime dir gives none", socketPaths("").empty());
+}
+
 int main() {
+    framing();
+    paths();
     runTracker();
     deafenIntent();
     std::printf("%d failed\n", g_fails);
