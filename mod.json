@@ -25,6 +25,9 @@
 			"description": "Also deafen in practice mode."
 		}
 	},
+	"resources": {
+		"files": ["build-helper/autodeafen-helper", "helper/autodeafen-start"]
+	},
 	"dependencies": {
 		"geode.node-ids": ">=v1.24.0-beta.1"
 	}

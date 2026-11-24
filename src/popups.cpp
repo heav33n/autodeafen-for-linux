@@ -16,7 +16,7 @@ namespace {
             case LinkStatus::BadApp: return { "Discord does not know that client ID", { 255, 100, 100 } };
             case LinkStatus::Refused: return { "Discord refused, trying again", { 255, 210, 80 } };
             case LinkStatus::NeedSetup: return { "Discord: Setup needed", { 255, 210, 80 } };
-            case LinkStatus::Unsupported: return { "This Proton version is not supported", { 255, 100, 100 } };
+            case LinkStatus::Unsupported: return { "Could not reach Discord on this Proton", { 255, 100, 100 } };
             case LinkStatus::Disconnected: break;
         }
         return { "Discord: Disconnected", { 255, 100, 100 } };

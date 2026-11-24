@@ -13,6 +13,7 @@ add_library(${PROJECT_NAME} SHARED
     src/auth.cpp
     src/discord_link.cpp
     src/discord_socket.cpp
+    src/helper_link.cpp
 )
 target_link_libraries(${PROJECT_NAME} ws2_32)
 

@@ -41,6 +41,18 @@ namespace {
         return *s_shared;
     }
 
+    std::optional<std::filesystem::path> prepareHelper() {
+        static auto const s_script = [] {
+            auto script = helper_link::install(
+                Mod::get()->getResourcesDir().native(), Mod::get()->getSaveDir().native()
+            );
+            if (script) log::info("Using the Linux helper to reach Discord");
+            else log::error("Could not install the Linux helper");
+            return script;
+        }();
+        return s_script;
+    }
+
     class Worker {
         DiscordSocket m_socket;
         DeafenIntent m_intent;
@@ -270,13 +282,14 @@ namespace {
 
             auto dir = runtimeDir(std::getenv("WINE_HOST_XDG_RUNTIME_DIR"), std::getenv("XDG_RUNTIME_DIR"));
             m_closeCode = 0;
-            switch (m_socket.connect(dir)) {
+            switch (m_socket.connect(dir, { prepareHelper, stopping })) {
                 case DiscordSocket::Result::Unsupported:
                     setStatus(LinkStatus::Unsupported);
-                    return pause();
+                    return pause(15000ms);
                 case DiscordSocket::Result::NotRunning:
                     setStatus(LinkStatus::Disconnected);
-                    return pause();
+                    // Starting the helper is heavier than trying a socket.
+                    return pause(m_socket.usesHelper() ? 15000ms : RETRY_WAIT);
                 case DiscordSocket::Result::Connected:
                     break;
             }

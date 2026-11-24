@@ -58,6 +58,11 @@ from Wine worked on those two, so approach 2 is open for the other runtimes.
 Step 1: Winsock AF_UNIX only. Covers the owner.
 Step 2, before public release: helper used only when AF_UNIX returns 10047.
 
+### Helper, built 2026-11-24
+Static-PIE helper started by a script, connects back over 127.0.0.1 and proves
+itself with a file in the mod's save folder. Handshake tested on Proton 9, 10,
+11, Experimental, Hotfix, proton-cachyos 10 and Wine 11.22.
+
 ## Left to the builder
 Popup layout, token refresh, socket search (discord-ipc-0..9 and Flatpak path).
 Check hooks beside Mega Hack, which now loads as a Geode mod.

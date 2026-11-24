@@ -28,7 +28,7 @@ void DiscordSocket::close() {
     m_reader = {};
 }
 
-DiscordSocket::Result DiscordSocket::connect(std::string const& runtimeDir) {
+DiscordSocket::Result DiscordSocket::connect(std::string const& runtimeDir, Helper const& helper) {
     this->close();
     static bool const s_started = [] {
         WSADATA data;
@@ -36,9 +36,24 @@ DiscordSocket::Result DiscordSocket::connect(std::string const& runtimeDir) {
     }();
     if (!s_started) return Result::Unsupported;
 
+    if (!m_usesHelper) {
+        auto probe = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (probe == INVALID_SOCKET) m_usesHelper = true;
+        else closesocket(probe);
+    }
+    if (m_usesHelper) {
+        auto script = helper.prepare();
+        if (!script) return Result::Unsupported;
+        switch (helper_link::connect(*script, runtimeDir, helper.cancelled, m_socket)) {
+            case helper_link::Result::Connected: return Result::Connected;
+            case helper_link::Result::NotRunning: return Result::NotRunning;
+            case helper_link::Result::Failed: return Result::Unsupported;
+        }
+    }
+
     for (auto const& path : socketPaths(runtimeDir)) {
         auto sock = socket(AF_UNIX, SOCK_STREAM, 0);
-        if (sock == INVALID_SOCKET) return Result::Unsupported;
+        if (sock == INVALID_SOCKET) return Result::NotRunning;
 
         UnixAddress address { AF_UNIX, {} };
         std::memcpy(address.path, path.c_str(), path.size() + 1);

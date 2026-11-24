@@ -1,0 +1,5 @@
+#!/bin/sh
+# Started by the mod under Wine, which can only start scripts and not the helper
+# itself. Both files are named .exe because Wine then makes them executable.
+folder=${0%/*}
+exec "$folder/autodeafen-helper.exe" "$folder" "$@"

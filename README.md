@@ -9,13 +9,17 @@ directly, so it works on pure Wayland with **no keybinds and no Discord plugin**
 
 ## Requirements
 
-Geometry Dash 2.2091, Geode 6, and one of these runtimes:
+Geometry Dash 2.2091, Geode 6, 64-bit Linux, and Proton or Wine:
 
-| Runtime | Works |
+| Runtime | How it reaches Discord |
 |---|---|
-| proton-cachyos 11, GE-Proton 11 | Connects |
-| Valve Proton 9, 10, 11, Experimental, Hotfix | Not yet |
-| proton-cachyos 10, plain Wine 11.22 | Not yet |
+| proton-cachyos 11, GE-Proton 11 | Directly. Played in-game on proton-cachyos 11 |
+| Valve Proton 9, 10, 11, Experimental, Hotfix | Helper. Connection tested, not yet played |
+| proton-cachyos 10, Wine 11.22 | Helper. Connection tested, not yet played |
+
+The helper is a small Linux program inside the mod, started only when Proton
+cannot open Discord's socket. It passes messages between the game and Discord on
+your PC and closes with the game. Its source is in `helper/`.
 
 Discord must be the desktop app. Vesktop is not supported.
 
@@ -38,7 +42,9 @@ and sent only to Discord. They are never logged. Do not share that folder.
 
 ## Building
 
-`./build.sh` cross-compiles on Linux. `tests/run.sh` runs the tests.
+`./build.sh` cross-compiles on Linux. `tests/run.sh` and
+`tests/helper_test.py build-helper/autodeafen-helper` run the tests.
+`tests/proton_smoke.sh` checks the connection on chosen Proton builds.
 
 ## License
 
