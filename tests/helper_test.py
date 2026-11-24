@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """Runs the real helper against a fake Discord and a fake mod."""
-import os, pathlib, socket, stat, subprocess, sys, tempfile, threading
+import os, pathlib, socket, stat, time, subprocess, sys, tempfile, threading
 
 HELPER = sys.argv[1]
 NONCE = "0123456789abcdef0123456789abcdef"
@@ -34,12 +34,23 @@ def start(directory, port, nonce=NONCE, runtime=None, env=None):
 def proof(directory):
     return pathlib.Path(directory, "autodeafen-" + NONCE)
 
+def ok(directory):
+    return pathlib.Path(directory, "autodeafen-" + NONCE + ".ok")
+
+def accept(mod, directory, text=None):
+    """The mod's part: take the connection, check it, then vouch for it."""
+    game, peer = mod.accept()
+    game.settimeout(5)
+    hello = exactly(game, 1)
+    ok(directory).write_text(f"127.0.0.1 {peer[1]}\n" if text is None else text)
+    return game, peer, hello
+
 def session(directory, path="discord-ipc-0", **changes):
     discord = listener(socket.AF_UNIX, os.path.join(directory, path))
     mod = listener(socket.AF_INET, ("127.0.0.1", 0))
     process = start(directory, mod.getsockname()[1], **changes)
-    game, peer = mod.accept()
-    game.settimeout(5)
+    game, peer, hello = accept(mod, directory)
+    check("says hello first", hello == b"H")
     status = exactly(game, 1)
     client, _ = discord.accept()
     client.settimeout(5)
@@ -48,7 +59,7 @@ def session(directory, path="discord-ipc-0", **changes):
 
 with tempfile.TemporaryDirectory() as d:
     process, game, client, peer, status = session(d)
-    check("proves which connection is its own", proof(d).read_text() == f"{peer[1]}\n")
+    check("proves which connection is its own", proof(d).read_text() == f"127.0.0.1 {peer[1]}\n")
     check("proof is private", stat.S_IMODE(proof(d).stat().st_mode) == 0o600)
     check("no temporary file left", [f for f in os.listdir(d) if f.endswith(".tmp")] == [])
     check("reports Discord found", status == b"K")
@@ -82,7 +93,7 @@ with tempfile.TemporaryDirectory() as d:
 with tempfile.TemporaryDirectory() as d:
     mod = listener(socket.AF_INET, ("127.0.0.1", 0))
     process = start(d, mod.getsockname()[1])
-    game, _ = mod.accept(); game.settimeout(5)
+    game, _, _ = accept(mod, d)
     check("reports Discord missing", exactly(game, 1) == b"N")
     check("exits when Discord is missing", process.wait(5) == 0)
 
@@ -99,6 +110,42 @@ with tempfile.TemporaryDirectory() as d:
     check("never writes through a link", not os.path.exists("/tmp/autodeafen-should-not-exist"))
     free = listener(socket.AF_INET, ("127.0.0.1", 0)); port = free.getsockname()[1]; free.close()
     check("nobody listening fails", start(d, port).wait(5) == 3)
+
+def refused(name, prepare):
+    with tempfile.TemporaryDirectory() as d:
+        discord = listener(socket.AF_UNIX, os.path.join(d, "discord-ipc-0"))
+        discord.settimeout(0.3)
+        mod = listener(socket.AF_INET, ("127.0.0.1", 0))
+        process = start(d, mod.getsockname()[1])
+        game, peer = mod.accept(); game.settimeout(8)
+        exactly(game, 1)
+        prepare(d, peer[1])
+        check(name + ": gives up", process.wait(8) == 6)
+        check(name + ": sends nothing", exactly(game, 1) == b"")
+        try:
+            discord.accept(); opened = True
+        except TimeoutError:
+            opened = False
+        check(name + ": never opens Discord", not opened)
+
+refused("no answer from the mod", lambda d, port: None)
+refused("wrong port vouched for", lambda d, port: ok(d).write_text(f"127.0.0.1 {port + 1}\n"))
+refused("wrong address vouched for", lambda d, port: ok(d).write_text(f"127.0.0.2 {port}\n"))
+
+def linked(d, port):
+    target = pathlib.Path(d, "elsewhere"); target.write_text(f"127.0.0.1 {port}\n")
+    ok(d).symlink_to(target)
+refused("linked file", linked)
+
+with tempfile.TemporaryDirectory() as d:
+    discord = listener(socket.AF_UNIX, os.path.join(d, "discord-ipc-0"))
+    mod = listener(socket.AF_INET, ("127.0.0.1", 0))
+    process = start(d, mod.getsockname()[1])
+    game, peer = mod.accept(); game.settimeout(5); exactly(game, 1)
+    ok(d).write_text("127.0.0.1 "); time.sleep(0.3)
+    ok(d).write_text(f"127.0.0.1 {peer[1]}\n")
+    check("waits for a half-written answer", exactly(game, 1) == b"K")
+    game.close(); process.wait(5)
 
 print(f"{fails} failed")
 sys.exit(fails != 0)

@@ -1,6 +1,7 @@
 // Runs on Linux, next to the game. Proton versions that cannot open Discord's
 // socket start this instead: it connects to the mod and to Discord, and passes
 // bytes between them until either side closes.
+#include "../src/helper_proof.hpp"
 #include "../src/socket_paths.hpp"
 
 #include <arpa/inet.h>
@@ -10,6 +11,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fcntl.h>
+#include <sys/stat.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <unistd.h>
@@ -31,10 +33,15 @@ namespace {
     int connectToMod(int port) {
         auto fd = socket(AF_INET, SOCK_STREAM | SOCK_CLOEXEC, 0);
         if (fd < 0) return -1;
-        sockaddr_in address {};
-        address.sin_family = AF_INET;
+        sockaddr_in own {};
+        own.sin_family = AF_INET;
+        own.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        sockaddr_in address = own;
         address.sin_port = htons(static_cast<uint16_t>(port));
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        if (bind(fd, reinterpret_cast<sockaddr*>(&own), sizeof(own)) != 0) {
+            close(fd);
+            return -1;
+        }
         if (connect(fd, reinterpret_cast<sockaddr*>(&address), sizeof(address)) == 0) return fd;
         close(fd);
         return -1;
@@ -42,12 +49,7 @@ namespace {
 
     // Writes our end of the connection into the mod's own folder. Other users on
     // this PC cannot write there, so the mod knows this connection is ours.
-    bool writeProof(int mod, std::string const& folder, std::string const& nonce) {
-        sockaddr_in address {};
-        socklen_t size = sizeof(address);
-        if (getsockname(mod, reinterpret_cast<sockaddr*>(&address), &size) != 0) return false;
-        auto text = std::to_string(ntohs(address.sin_port)) + "\n";
-        auto path = folder + "/autodeafen-" + nonce;
+    bool writeProof(std::string const& path, std::string const& text) {
         auto temporary = path + ".tmp";
         auto fd = open(temporary.c_str(), O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC, 0600);
         if (fd < 0) return false;
@@ -56,6 +58,29 @@ namespace {
         // Renaming makes it appear all at once.
         if (written && std::rename(temporary.c_str(), path.c_str()) == 0) return true;
         unlink(temporary.c_str());
+        return false;
+    }
+
+    // The mod vouches for the connection the same way. Without this, someone who
+    // took over the mod's port could reach Discord through us.
+    bool vouchedFor(std::string const& path, std::string const& text) {
+        auto fd = open(path.c_str(), O_RDONLY | O_NOFOLLOW | O_NONBLOCK | O_CLOEXEC);
+        if (fd < 0) return false;
+        struct stat info {};
+        char buffer[64];
+        ssize_t got = -1;
+        if (fstat(fd, &info) == 0 && S_ISREG(info.st_mode) && info.st_uid == getuid()) {
+            got = read(fd, buffer, sizeof(buffer));
+        }
+        close(fd);
+        return got > 0 && std::string_view(buffer, got) == text;
+    }
+
+    bool waitUntilVouchedFor(std::string const& path, std::string const& text) {
+        for (int tries = 0; tries < 150; ++tries) {
+            if (vouchedFor(path, text)) return true;
+            usleep(20000);
+        }
         return false;
     }
 
@@ -101,15 +126,25 @@ int main(int argc, char** argv) {
     auto port = std::strtol(argv[2], &rest, 10);
     if (rest == argv[2] || *rest || port < 1 || port > 65535) return 2;
 
+    // Nothing before the connection is ready may take longer than this.
+    alarm(10);
     auto mod = connectToMod(static_cast<int>(port));
     if (mod < 0) return 3;
-    if (!writeProof(mod, folder, nonce)) return 4;
+    sockaddr_in own {};
+    socklen_t size = sizeof(own);
+    if (getsockname(mod, reinterpret_cast<sockaddr*>(&own), &size) != 0) return 3;
+    auto proof = proofText(ntohs(own.sin_port));
+    auto path = folder + "/autodeafen-" + nonce;
+    if (!writeProof(path, proof)) return 4;
+    if (!sendAll(mod, "H", 1)) return 3;
+    if (!waitUntilVouchedFor(path + ".ok", proof)) return 6;
 
     auto dir = runtimeDir(argv[4], std::getenv("XDG_RUNTIME_DIR"));
     if (dir.empty()) dir = "/run/user/" + std::to_string(getuid());
     auto discord = connectToDiscord(dir);
     if (!sendAll(mod, discord < 0 ? "N" : "K", 1) || discord < 0) return 0;
 
+    alarm(0);
     auto child = fork();
     if (child < 0) return 5;
     if (child == 0) {

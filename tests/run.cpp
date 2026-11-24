@@ -2,6 +2,7 @@
 #include "../src/auth_step.hpp"
 #include "../src/deafen_intent.hpp"
 #include "../src/frame.hpp"
+#include "../src/helper_proof.hpp"
 #include "../src/level_edit.hpp"
 #include "../src/level_key.hpp"
 #include "../src/range.hpp"
@@ -261,7 +262,19 @@ static void review2() {
     check("two decimals", formatPercent(97.25f) == "97.25");
 }
 
+static void helperProof() {
+    constexpr uint32_t LOCAL = 0x7f000001;
+    check("helper's own endpoint matches", proofMatches("127.0.0.1 40000\n", LOCAL, 40000));
+    check("other port is refused", !proofMatches("127.0.0.1 40000\n", LOCAL, 40001));
+    check("same port from 127.0.0.2 is refused", !proofMatches("127.0.0.1 40000\n", LOCAL + 1, 40000));
+    check("proof for another address is refused", !proofMatches("127.0.0.2 40000\n", LOCAL + 1, 40000));
+    check("half-written proof is refused", !proofMatches("127.0.0.1 4000", LOCAL, 4000));
+    check("empty proof is refused", !proofMatches("", LOCAL, 0));
+    check("trailing junk is refused", !proofMatches("127.0.0.1 40000\nx", LOCAL, 40000));
+}
+
 int main() {
+    helperProof();
     review2();
     safety();
     levels();

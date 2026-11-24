@@ -1,4 +1,5 @@
 #include "helper_link.hpp"
+#include "helper_proof.hpp"
 
 #define WIN32_LEAN_AND_MEAN
 #ifndef NOMINMAX
@@ -64,12 +65,23 @@ namespace {
         return byte;
     }
 
-    // The helper writes its own port here. Only this user can, so a match means
-    // the connection really is the helper's.
-    bool proven(std::filesystem::path const& proof, unsigned short port) {
-        std::ifstream file(proof);
-        unsigned written = 0;
-        return file >> written && written == port;
+    // Only this user can write in the folder, so a match means the connection
+    // really is the helper's.
+    bool proven(std::filesystem::path const& proof, sockaddr_in const& peer) {
+        std::ifstream file(proof, std::ios::binary);
+        std::string text(64, '\0');
+        file.read(text.data(), static_cast<std::streamsize>(text.size()));
+        text.resize(static_cast<size_t>(file.gcount()));
+        return peer.sin_family == AF_INET
+            && proofMatches(text, ntohl(peer.sin_addr.s_addr), ntohs(peer.sin_port));
+    }
+
+    // Tells the helper that this connection is the mod's.
+    bool vouch(std::filesystem::path const& path, sockaddr_in const& peer) {
+        std::ofstream file(path, std::ios::binary | std::ios::trunc);
+        file << proofText(ntohs(peer.sin_port));
+        file.close();
+        return !file.fail();
     }
 
     std::wstring widen(std::string const& text) {
@@ -129,6 +141,7 @@ helper_link::Result helper_link::connect(
 
     auto nonce = makeNonce();
     Cleanup proof { script.parent_path() / ("autodeafen-" + nonce) };
+    Cleanup answer { script.parent_path() / ("autodeafen-" + nonce + ".ok") };
     // Nothing here is secret: other users can read command lines. A folder with
     // quotes in it would break out of its argument, so let the helper find it.
     auto dir = runtimeDir.find('"') == std::string::npos ? runtimeDir : "";
@@ -141,14 +154,16 @@ helper_link::Result helper_link::connect(
         int peerSize = sizeof(peer);
         Socket client(accept(listener.get(), reinterpret_cast<sockaddr*>(&peer), &peerSize));
         if (!client.valid()) continue;
-        // The helper writes its proof before this byte.
-        auto status = readByte(client.get(), std::min(deadline, Clock::now() + REPLY_WAIT), cancelled);
-        if (!status || !proven(proof.path, ntohs(peer.sin_port))) continue;
-        if (*status == 'K') {
+        auto reply = [&] { return readByte(client.get(), std::min(deadline, Clock::now() + REPLY_WAIT), cancelled); };
+        // The helper writes its proof before saying hello.
+        if (reply() != 'H' || !proven(proof.path, peer)) continue;
+        if (!vouch(answer.path, peer)) return Result::Failed;
+        auto status = reply();
+        if (status == 'K') {
             socket = client.release();
             return Result::Connected;
         }
-        return *status == 'N' ? Result::NotRunning : Result::Failed;
+        return status == 'N' ? Result::NotRunning : Result::Failed;
     }
     return Result::Failed;
 }
