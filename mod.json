@@ -7,6 +7,20 @@
 	"developer": "heav33n",
 	"description": "Deafens Discord during good runs on Linux. No keybinds, no Discord plugin.",
 	"tags": ["utility", "enhancement"],
+	"settings": {
+		"enabled": {
+			"type": "bool", "name": "Enabled By Default", "default": false,
+			"description": "Turns AutoDeafen on for levels you have not set up in the pause menu."
+		},
+		"percent": {
+			"type": "float", "name": "Default Percent", "default": 50, "min": 0, "max": 100,
+			"description": "Where to deafen in levels you have not set up in the pause menu."
+		},
+		"practice": {
+			"type": "bool", "name": "Practice Mode", "default": false,
+			"description": "Also deafen in practice mode."
+		}
+	},
 	"dependencies": {
 		"geode.node-ids": ">=v1.24.0-beta.1"
 	}
